@@ -4,8 +4,16 @@
 
 #define BLOCK_SIZE 16
 
-void initWith(float* M, int dim) {
+void initWith(float* M, int dim, float n) {
 	for (int i = 0; i < dim; i++) {
+		for (int j = 0; j < dim; j++) {
+			M[i * dim + j] = n;
+		}
+	}
+}
+
+void init(float* M, int dim) {
+	for (int i = 0; i < dim; i++	) {
 		for (int j = 0; j < dim; j++) {
 			M[i * dim + j] = rand();
 		}
@@ -13,17 +21,79 @@ void initWith(float* M, int dim) {
 }
 
 __global__
-void matrixMul(float* A, float* B, float* res, int dim) {
-	__shared__ float tile_A[BLOCK_SIZE][BLOCK_SIZE];
+void matrixMul(float* left, float* right, float* res, int dim) {
+    int i,j, idx;
+    float temp = 0;
+
+    __shared__ float Left_shared_t [BLOCK_SIZE][BLOCK_SIZE];
+    __shared__ float Right_shared_t[BLOCK_SIZE][BLOCK_SIZE];
+
+    // Row i of matrix left
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+
+    for (int tileNUM = 0; tileNUM < gridDim.x; tileNUM++) {
+
+        // Column j of matrix left
+        j = tileNUM * BLOCK_SIZE + threadIdx.x;
+        i = tileNUM * BLOCK_SIZE + threadIdx.y;
+        // Load left[i][j] to shared mem
+
+        idx = row * dim  + tileNUM * BLOCK_SIZE + threadIdx.x;
+
+        if (idx >= dim * dim) {
+        	Left_shared_t[threadIdx.y][threadIdx.x] = 0;// Coalesced access
+        } else {
+        	Left_shared_t[threadIdx.y][threadIdx.x] = left[row * dim + j];// Coalesced access
+        }
+        // Load right[i][j] to shared mem
+
+        idx = (tileNUM * BLOCK_SIZE + threadIdx.y) * dim + col;
+
+        if (idx >= dim * dim) {
+        	Right_shared_t[threadIdx.y][threadIdx.x] = 0;
+        } else {
+        	Right_shared_t[threadIdx.y][threadIdx.x] = right[i * dim + col]; // Coalesced access
+        }
+        // Synchronize before computation
+        __syncthreads();
+
+        // Accumulate one tile of res from tiles of left and right in shared mem
+        for (int k = 0; k < BLOCK_SIZE; k++) {
+
+            temp += Left_shared_t[threadIdx.y][k] * Right_shared_t[k][threadIdx.x]; //no shared memory bank conflict
+        }
+        // Synchronize
+        __syncthreads();
+    }
+
+    if ((row < dim) && (col < dim)) {
+		// Store accumulated value to res
+		res[row * dim + col] = temp;
+    }
+	/*__shared__ float tile_A[BLOCK_SIZE][BLOCK_SIZE];
 	__shared__ float tile_B[BLOCK_SIZE][BLOCK_SIZE];
 
-	int row = blockIdx.y * BLOCK_SIZE + threadIdx.y;
-	int col = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+	int row = blockIdx.y * blockDim.y + threadIdx.y;
+	int col = blockIdx.x * blockDim.x + threadIdx.x;
 
 	float tmp = 0.0;
 	int idx;
 
-	for (int i = 0; i < gridDim.x; i++) {
+	int row_tile, col_tile;
+
+	for (int i = 0; i < gridDim.x; i++) {*/
+
+
+		/*col_tile = i * BLOCK_SIZE + threadIdx.x;
+		row_tile = i * BLOCK_SIZE + threadIdx.y;
+
+		tile_A[threadIdx.y][threadIdx.x] = A[row_tile * dim + col];
+		tile_B[threadIdx.y][threadIdx.x] = B[row * dim * col_tile];
+
+		__syncthreads();*/
+		/*
 		idx = row * dim + i * BLOCK_SIZE + threadIdx.x;
 
 		if (idx >= dim * dim) {
@@ -38,21 +108,22 @@ void matrixMul(float* A, float* B, float* res, int dim) {
 			tile_B[threadIdx.y][threadIdx.x] = 0;
 		} else {
 			tile_B[threadIdx.y][threadIdx.x] = B[idx];
-		}
+		}*/
 
-		__syncthreads();
+		/*__syncthreads();
 
 		for (int j = 0; j < BLOCK_SIZE; j++) {
-			tmp += tile_A[threadIdx.y][j] * tile_B[j][threadIdx.x];
+			tmp += tile_A[j][threadIdx.x] * tile_B[threadIdx.y][j];
 		}
 
-		__syncthreads();
+		__syncthreads();*/
 	}
-
+/*
 	if (row < dim && col < dim) {
 		res[row * dim + col] = tmp;
 	}
-}
+	__syncthreads();*/
+	//res[row * dim + col] = tmp;
 
 void matrixMulCPU(float* A, float* B, float* C, int dim) {
 	for (int i = 0; i < dim; i++) {
@@ -69,8 +140,11 @@ void matrixMulCPU(float* A, float* B, float* C, int dim) {
 void checkResult(float* A, float* B, float* C, float* C_cpu, int dim) {
 	for (int i = 0; i < dim; i++) {
 		for (int j = 0; j < dim; j++) {
-			if (C_cpu[i * dim + j] != C[i * dim + j]) {
-				printf("ERROR: Incorrect Results!\n");
+			if (abs(C[i * dim + j] - C_cpu[i * dim + j]) > 0.001) {
+				printf("matrix pos: %d,%d\n", i, j);
+				printf("index: %d\n", i * dim + j); // DEBUG PRINT
+				printf("CPU: %f, GPU %f\n", C_cpu[i * dim + j], C[i * dim + j]);	 // DEBUG PRINT
+				printf("ERROR: Incorrect Results! %f\n", abs(C_cpu[i * dim + j] - C[i * dim + j]));
 				return;
 			}
 		}
@@ -112,17 +186,33 @@ int main(int argc, char** argv) {
 	cudaMallocManaged(&C_cpu, size);
 
 	// Matrix initialization
-	initWith(A, N);
-	initWith(B, N);
+	initWith(A, N, 1.0f);
+	initWith(B, N, 1.0f);
+
+
+	/*for (int i = 0; i < N; i++) {
+		for (int j = 0; j < N; j++) {
+			printf("%f ", C_cpu[i * N + j]);
+		}
+		printf("\n");
+	}*/
 
 	// Cuda layout definition
-	unsigned int grid = (N + N - 1) / N;
-	dim3 dimGrid(grid, grid);
-	dim3 dimBlock(N, N);
+	dim3 threadsPerBlock(BLOCK_SIZE, BLOCK_SIZE);
+	dim3 blocksPerGrid((N + BLOCK_SIZE - 1) /  BLOCK_SIZE, (N + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
-	matrixMulCPU(A, B, C_cpu, N);
-	matrixMul<<<dimGrid, dimBlock>>>(A, B, C, N);
+	//matrixMulCPU(A, B, C_cpu, N);
+	matrixMul<<<blocksPerGrid, threadsPerBlock>>>(A, B, C, N);
 	cudaDeviceSynchronize();
+
+	initWith(C_cpu, N, 100.0f);
+	for (int i = 0; i < N; i++) {
+		for (int j = 0; j < N; j++) {
+			printf("%f ", C_cpu[i * N + j]);
+		}
+		printf("\n");
+	}
+
 
 	checkResult(A, B, C, C_cpu, N);
 
