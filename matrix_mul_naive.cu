@@ -1,3 +1,8 @@
+/**
+ * Inaki Urruta Sanchez
+ * Pedro Alexandre Simoes dos Reis
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -5,6 +10,9 @@
 
 #define BLOCK_SIZE 16
 
+/**
+ * Initialize matrix M with dimension dim with n in all matrix's entries
+ */
 void initWith(float* M, int dim, float n) {
 	for (int i = 0; i < dim; i++) {
 		for (int j = 0; j < dim; j++) {
@@ -13,6 +21,9 @@ void initWith(float* M, int dim, float n) {
 	}
 }
 
+/**
+ * Initialize matrix M with dimension dim with a random number between 0 and 9 in all matrix's entries
+ */
 void init(float* M, int dim) {
 	for (int i = 0; i < dim; i++	) {
 		for (int j = 0; j < dim; j++) {
@@ -21,6 +32,10 @@ void init(float* M, int dim) {
 	}
 }
 
+/**
+ * Multiplies matrix left by the matrix right, both with dimensions dim and stores the result in matrix res
+ * Operation is done in GPU
+ */
 __global__
 void matrixMul(float* left, float* right, float* res, int dim) {
     int i, j, idx;
@@ -39,8 +54,8 @@ void matrixMul(float* left, float* right, float* res, int dim) {
         // Column j of matrix left
         j = tileNUM * BLOCK_SIZE + threadIdx.x;
         i = tileNUM * BLOCK_SIZE + threadIdx.y;
-        // Load left[i][j] to shared mem
 
+        // Load left[i][j] to shared mem
         idx = row * dim  + tileNUM * BLOCK_SIZE + threadIdx.x;
 
         if (idx >= dim * dim) {
@@ -48,8 +63,8 @@ void matrixMul(float* left, float* right, float* res, int dim) {
         } else {
         	Left_shared_t[threadIdx.y][threadIdx.x] = left[row * dim + j];// Coalesced access
         }
-        // Load right[i][j] to shared mem
 
+        // Load right[i][j] to shared mem
         idx = (tileNUM * BLOCK_SIZE + threadIdx.y) * dim + col;
 
         if (idx >= dim * dim) {
@@ -57,14 +72,15 @@ void matrixMul(float* left, float* right, float* res, int dim) {
         } else {
         	Right_shared_t[threadIdx.y][threadIdx.x] = right[i * dim + col]; // Coalesced access
         }
+
         // Synchronize before computation
         __syncthreads();
 
         // Accumulate one tile of res from tiles of left and right in shared mem
         for (int k = 0; k < BLOCK_SIZE; k++) {
-
             temp += Left_shared_t[threadIdx.y][k] * Right_shared_t[k][threadIdx.x]; //no shared memory bank conflict
         }
+
         // Synchronize
         __syncthreads();
     }
@@ -73,59 +89,13 @@ void matrixMul(float* left, float* right, float* res, int dim) {
 		// Store accumulated value to res
 		res[row * dim + col] = temp;
     }
-	/*__shared__ float tile_A[BLOCK_SIZE][BLOCK_SIZE];
-	__shared__ float tile_B[BLOCK_SIZE][BLOCK_SIZE];
+}
 
-	int row = blockIdx.y * blockDim.y + threadIdx.y;
-	int col = blockIdx.x * blockDim.x + threadIdx.x;
-
-	float tmp = 0.0;
-	int idx;
-
-	int row_tile, col_tile;
-
-	for (int i = 0; i < gridDim.x; i++) {*/
-
-
-		/*col_tile = i * BLOCK_SIZE + threadIdx.x;
-		row_tile = i * BLOCK_SIZE + threadIdx.y;
-
-		tile_A[threadIdx.y][threadIdx.x] = A[row_tile * dim + col];
-		tile_B[threadIdx.y][threadIdx.x] = B[row * dim * col_tile];
-
-		__syncthreads();*/
-		/*
-		idx = row * dim + i * BLOCK_SIZE + threadIdx.x;
-
-		if (idx >= dim * dim) {
-			tile_A[threadIdx.y][threadIdx.x] = 0;
-		} else {
-			tile_A[threadIdx.y][threadIdx.x] = A[idx];
-		}
-
-		idx = (i * BLOCK_SIZE + threadIdx.y) * dim + col;
-
-		if (idx >= dim * dim) {
-			tile_B[threadIdx.y][threadIdx.x] = 0;
-		} else {
-			tile_B[threadIdx.y][threadIdx.x] = B[idx];
-		}*/
-
-		/*__syncthreads();
-
-		for (int j = 0; j < BLOCK_SIZE; j++) {
-			tmp += tile_A[j][threadIdx.x] * tile_B[threadIdx.y][j];
-		}
-
-		__syncthreads();*/
-	}
-/*
-	if (row < dim && col < dim) {
-		res[row * dim + col] = tmp;
-	}
-	__syncthreads();*/
-	//res[row * dim + col] = tmp;
-
+/**
+ * Multiplies matrix A by matrix B, both with dimension dim X dim and stores the result in matrix C with dimension dim X dim
+ * Operation is done in CPU
+ */
+__host__
 void matrixMulCPU(float* A, float* B, float* C, int dim) {
 	for (int i = 0; i < dim; i++) {
 		for (int j = 0; j < dim; j++) {
@@ -138,6 +108,10 @@ void matrixMulCPU(float* A, float* B, float* C, int dim) {
 	}
 }
 
+/**
+ * Given two matrices A and B, both with dimensions dim X dim, prints in stdout if the result stored in matrix C with dimension dim X dim
+ *   is the same as the result given in matrix C_cpu
+ */
 void checkResult(float* A, float* B, float* C, float* C_cpu, int dim) {
 	for (int i = 0; i < dim; i++) {
 		for (int j = 0; j < dim; j++) {
@@ -151,6 +125,10 @@ void checkResult(float* A, float* B, float* C, float* C_cpu, int dim) {
 	printf("Everything is OK! :D\n");
 }
 
+/**
+ * Returns the current time in milliseconds
+ * Used to calculate elapsed time
+ */
 double cpuTimer() {
 	struct timeval clock;
 	gettimeofday(&clock, NULL);
@@ -158,22 +136,36 @@ double cpuTimer() {
 }
 
 int main(int argc, char** argv) {
+	// Set random seed
 	srand(time(0));
+
+	cudaError_t error;
 
 	cudaDeviceProp prop;
 	int numDevices = 0;
 
-	cudaGetDeviceCount(&numDevices);
+	error = cudaGetDeviceCount(&numDevices);
+
+	if (error != cudaSuccess) {
+		printf("ERROR: %s\n", cudaGetErrorString(error));
+		exit(EXIT_FAILURE);
+	}
 
 	int totalMemory = 0;
 
 	for (int i = 0; i < numDevices; i++) {
-		cudaGetDeviceProperties(&prop, i);
+		error = cudaGetDeviceProperties(&prop, i);
+
+		if (error != cudaSuccess) {
+			printf("ERROR: %s\n", cudaGetErrorString(error));
+			exit(EXIT_FAILURE);
+		}
+
 		totalMemory += prop.totalGlobalMem;
 	}
 
 	// Matrix size definition and calculation
-	const int N = 100;
+	const int N = 10;
 	size_t size = N * N * sizeof(float);
 
 	int allMatrixSizes = (N * N) * 3;
@@ -184,10 +176,33 @@ int main(int argc, char** argv) {
 
 	// Matrix allocation
 	float *A, *B, *C, *C_cpu;
-	cudaMallocManaged(&A, size);
-	cudaMallocManaged(&B, size);
-	cudaMallocManaged(&C, size);
-	cudaMallocManaged(&C_cpu, size);
+	error = cudaMallocManaged(&A, size);
+
+	if (error != cudaSuccess) {
+		printf("ERROR: %s\n", cudaGetErrorString(error));
+		exit(EXIT_FAILURE);
+	}
+
+	error = cudaMallocManaged(&B, size);
+
+	if (error != cudaSuccess) {
+		printf("ERROR: %s\n", cudaGetErrorString(error));
+		exit(EXIT_FAILURE);
+	}
+
+	error = cudaMallocManaged(&C, size);
+
+	if (error != cudaSuccess) {
+		printf("ERROR: %s\n", cudaGetErrorString(error));
+		exit(EXIT_FAILURE);
+	}
+
+	error =cudaMallocManaged(&C_cpu, size);
+
+	if (error != cudaSuccess) {
+		printf("ERROR: %s\n", cudaGetErrorString(error));
+		exit(EXIT_FAILURE);
+	}
 
 	// Matrix initialization
 	init(A, N);
@@ -197,14 +212,19 @@ int main(int argc, char** argv) {
 	dim3 threadsPerBlock(BLOCK_SIZE, BLOCK_SIZE);
 	dim3 blocksPerGrid((N + BLOCK_SIZE - 1) /  BLOCK_SIZE, (N + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
-
 	// Start timer
 	double start = cpuTimer();
-	//matrixMulCPU(A, B, C_cpu, N);
 	matrixMul<<<blocksPerGrid, threadsPerBlock>>>(A, B, C, N);
 	cudaDeviceSynchronize();
 	// Stop timer
 	double stop = cpuTimer();
+
+	error = cudaGetLastError();
+
+	if (error != cudaSuccess) {
+		printf("ERROR: %s\n", cudaGetErrorString(error));
+		exit(EXIT_FAILURE);
+	}
 
 	// Print time interval
 	float gpu_milliseconds = stop - start;
@@ -220,7 +240,7 @@ int main(int argc, char** argv) {
 	// Stop timer
 	double end = cpuTimer();
 
-	// Print time inerval
+	// Print time interval
 	float cpu_milliseconds = end - begin;
 	printf("Matrix Multiplication @ CPU: %f ms\n", cpu_milliseconds);
 
