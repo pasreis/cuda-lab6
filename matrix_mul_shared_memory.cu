@@ -15,7 +15,7 @@ void initWith(float* M, int dim, float n) {
 void init(float* M, int dim) {
 	for (int i = 0; i < dim; i++) {
 		for (int j = 0; j < dim ; j++) {
-			M[i * dim + j] = rand();
+			M[i * dim + j] = (rand() % 10);
 		}
 	}
 }
@@ -74,6 +74,18 @@ void matrixMul(float* left, float* right, float* res, int dim) {
 	}
 }
 
+void matrixMulCPU(float* A, float* B, float* C, int dim) {
+	for (int i = 0; i < dim; i++) {
+		for (int j = 0; j < dim; j++) {
+			float tmp = 0.0;
+			for (int k = 0; k < dim; k++) {
+				tmp += A[i * dim + k] * B[k * dim + j];
+			}
+			C[i * dim + j]  = tmp;
+		}
+	}
+}
+
 void checkResult(float* A, float* B, float* C, float* C_cpu, int dim) {
 	for (int i = 0; i < dim; i++) {
 		for (int j = 0; j < dim; j++) {
@@ -111,8 +123,8 @@ int main(int argc, char** argv) {
 	cudaMallocHost((void**) &h_C_cpu, size);
 
 	// Matrix initialization
-	initWith(h_A, N, 1.0f);
-	initWith(h_B, N, 1.0f);
+	init(h_A, N);
+	init(h_B, N);
 
 	// Matrix allocation on Device
 	float *d_A, *d_B, *d_C;
@@ -135,7 +147,7 @@ int main(int argc, char** argv) {
 	cudaMemcpy(h_C, d_C, size, cudaMemcpyDeviceToHost);
 	cudaThreadSynchronize();
 
-	initWith(h_C_cpu, N, 100.0f);
+	matrixMulCPU(h_A, h_B, h_C_cpu, N);
 	checkResult(h_A, h_B, h_C, h_C_cpu, N);
 
 	// Free memory
