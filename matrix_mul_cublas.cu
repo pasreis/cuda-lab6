@@ -15,7 +15,20 @@ void initWith(float* M, int dim, float n) {
 void init(float* M, int dim) {
 	for (int i = 0; i < dim; i++) {
 		for (int j = 0; j < dim; j++) {
-			M[i * dim + j] = rand();
+			M[i * dim + j] = (rand() % 10);
+		}
+	}
+}
+
+__host__
+void matrixMulCPU(float* A, float* B, float* C_cpu, int dim) {
+	for (int i = 0; i < dim; i++) {
+		for (int j = 0; j < dim; j++) {
+			float tmp = 0.0f;
+			for (int k = 0; k < dim; k++) {
+				tmp += A[i * dim + k] * B[k * dim + j];
+			}
+			C_cpu[i * dim + j] = tmp;
 		}
 	}
 }
@@ -24,10 +37,7 @@ void checkResult(float* A, float* B, float* C, float* C_cpu, int dim) {
 	for (int i = 0; i < dim; i++) {
 		for (int j = 0; j < dim; j++) {
 			if (abs(C[i * dim + j] - C_cpu[i * dim + j]) > 0.001) {
-				printf("matrix pos: %d,%d\n", i, j);
-				printf("index: %d\n", i * dim + j); // DEBUG PRINT
-				printf("CPU: %f, GPU %f\n", C_cpu[i * dim + j], C[i * dim + j]);	 // DEBUG PRINT
-				printf("ERROR: Incorrect Results! %f\n", abs(C_cpu[i * dim + j] - C[i * dim + j]));
+				printf("ERROR: Incorrect Results!\n");
 				return;
 			}
 		}
@@ -52,9 +62,9 @@ int main(int argc, char** argv) {
 	h_C = (float*) malloc(size);
 	h_C_cpu = (float*) malloc(size);
 
-	initWith(h_A, N, 1.0f);
-	initWith(h_B, N, 1.0f);
-	initWith(h_C_cpu, N, 100.0f);
+	init(h_A, N);
+	init(h_B, N);
+	matrixMulCPU(h_A, h_B, h_C_cpu, N);
 
 	float* d_A, *d_B, *d_C;
 
@@ -64,20 +74,18 @@ int main(int argc, char** argv) {
 
 	status = cublasCreate(&handle);
 
-	float al = 1.0f, bet = 1.0f;
+	float al = 1.0f, bet = 0.0f;
 
 	status = cublasSetMatrix(N, N, sizeof(float), h_A, N, d_A, N);
 	status = cublasSetMatrix(N, N, sizeof(float), h_B, N, d_B, N);
 	status = cublasSetMatrix(N, N, sizeof(float), h_C, N, d_C, N);
 
+	status  = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, N, N, &al, d_B, N, d_A, N, &bet, d_C, N);
 
-	status  = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, N, N, &al, d_A, N, d_B, N, &bet, d_C, N);
+	cudaMemcpy(h_C, d_C, size, cudaMemcpyDeviceToHost);
 
-	status = cublasGetMatrix(N, N, sizeof(float), d_C, N, h_C, N);
-	printf("h_C: %f\n", h_C[0]); // DEBUG PRINT
-	printf("Before checkResult	\n"); // DEBUG PRINT
 	checkResult(h_A, h_B, h_C, h_C_cpu, N);
-	printf("After checkResult\n"); // DEBUG PRINT
+
 	cudaFree(d_A);
 	cudaFree(d_B);
 	cudaFree(d_C);
