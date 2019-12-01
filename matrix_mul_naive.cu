@@ -22,7 +22,7 @@ void init(float* M, int dim) {
 
 __global__
 void matrixMul(float* left, float* right, float* res, int dim) {
-    int i,j, idx;
+    int i, j, idx;
     float temp = 0;
 
     __shared__ float Left_shared_t [BLOCK_SIZE][BLOCK_SIZE];
