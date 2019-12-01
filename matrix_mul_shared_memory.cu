@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/time.h>
 
 #define BLOCK_SIZE 16
 
@@ -18,6 +19,12 @@ void init(float* M, int dim) {
 			M[i * dim + j] = (rand() % 10);
 		}
 	}
+}
+
+double cpuTimer() {
+	struct timeval clock;
+	gettimeofday(&clock, NULL);
+	return ((double) clock.tv_sec + (double) clock.tv_usec * 1e-6);
 }
 
 __global__
@@ -141,13 +148,34 @@ int main(int argc, char** argv) {
 	dim3 threadsPerBlock(BLOCK_SIZE, BLOCK_SIZE);
 	dim3  blocksPerGrid((N + BLOCK_SIZE - 1) / BLOCK_SIZE, (N + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
+	// Start timer
+	double start = cpuTimer();
+
 	matrixMul<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, d_C, N);
 	cudaDeviceSynchronize();
+
+	// Stop timer
+	double stop = cpuTimer();
+
+	// Print time interval
+	double gpu_time = stop - start;
+	printf("Matrix Multiplication @ GPU: %f ms \n", gpu_time);
 
 	cudaMemcpy(h_C, d_C, size, cudaMemcpyDeviceToHost);
 	cudaThreadSynchronize();
 
+	// Start timer
+	double begin = cpuTimer();
+
 	matrixMulCPU(h_A, h_B, h_C_cpu, N);
+
+	// Stop Timer
+	double end = cpuTimer();
+
+	// Print time interval
+	double cpu_time = end - begin;
+	printf("Matrix Multiplication @ CPU: %f ms \n", cpu_time);
+
 	checkResult(h_A, h_B, h_C, h_C_cpu, N);
 
 	// Free memory

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/time.h>
 #include <cuda_runtime.h>
 #include "cublas_v2.h"
 
@@ -46,6 +47,12 @@ void checkResult(float* A, float* B, float* C, float* C_cpu, int dim) {
 	printf("Everything is OK! :D\n");
 }
 
+double cpuTimer() {
+	struct timeval clock;
+	gettimeofday(&clock, NULL);
+	return ((double) clock.tv_sec + (double) clock.tv_usec * 1e-6);
+}
+
 int main(int argc, char** argv) {
 	srand(time(0));
 	cudaError_t error;
@@ -64,7 +71,18 @@ int main(int argc, char** argv) {
 
 	init(h_A, N);
 	init(h_B, N);
+
+	// Start timer
+	double begin = cpuTimer();
+
 	matrixMulCPU(h_A, h_B, h_C_cpu, N);
+
+	// Stop timer
+	double end = cpuTimer();
+
+	// Print time interval
+	double cpu_milliseconds = end - begin;
+	printf("Matrix Multiplication @ CPU: %f\n", cpu_milliseconds);
 
 	float* d_A, *d_B, *d_C;
 
@@ -80,7 +98,15 @@ int main(int argc, char** argv) {
 	status = cublasSetMatrix(N, N, sizeof(float), h_B, N, d_B, N);
 	status = cublasSetMatrix(N, N, sizeof(float), h_C, N, d_C, N);
 
+	// Star timer
+	double start = cpuTimer();
 	status  = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, N, N, &al, d_B, N, d_A, N, &bet, d_C, N);
+	// Stop timer
+	double stop = cpuTimer();
+
+	// Print time interval
+	double gpu_milliseconds = stop - start;
+	printf("Matrix Multiplication @ GPU: %f ms\n", gpu_milliseconds);
 
 	cudaMemcpy(h_C, d_C, size, cudaMemcpyDeviceToHost);
 

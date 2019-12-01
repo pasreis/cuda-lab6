@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/time.h>
 
 #define BLOCK_SIZE 16
 
@@ -150,6 +151,12 @@ void checkResult(float* A, float* B, float* C, float* C_cpu, int dim) {
 	printf("Everything is OK! :D\n");
 }
 
+double cpuTimer() {
+	struct timeval clock;
+	gettimeofday(&clock, NULL);
+	return ((double) clock.tv_sec + (double) clock.tv_usec * 1e-6);
+}
+
 int main(int argc, char** argv) {
 	srand(time(0));
 
@@ -190,11 +197,32 @@ int main(int argc, char** argv) {
 	dim3 threadsPerBlock(BLOCK_SIZE, BLOCK_SIZE);
 	dim3 blocksPerGrid((N + BLOCK_SIZE - 1) /  BLOCK_SIZE, (N + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
+
+	// Start timer
+	double start = cpuTimer();
 	//matrixMulCPU(A, B, C_cpu, N);
 	matrixMul<<<blocksPerGrid, threadsPerBlock>>>(A, B, C, N);
 	cudaDeviceSynchronize();
+	// Stop timer
+	double stop = cpuTimer();
 
+	// Print time interval
+	float gpu_milliseconds = stop - start;
+
+	printf("Matrix Multiplication @ GPU: %f ms\n", gpu_milliseconds);
+
+	// Start timer
+	double begin = cpuTimer();
+
+	// Matrix multiplication in CPU
 	matrixMulCPU(A, B, C_cpu, N);
+
+	// Stop timer
+	double end = cpuTimer();
+
+	// Print time inerval
+	float cpu_milliseconds = end - begin;
+	printf("Matrix Multiplication @ CPU: %f ms\n", cpu_milliseconds);
 
 	checkResult(A, B, C, C_cpu, N);
 
