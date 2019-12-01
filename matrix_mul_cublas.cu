@@ -64,17 +64,17 @@ int main(int argc, char** argv) {
 
 	status = cublasCreate(&handle);
 
-	float al = 1.0f, bet = 0.0f;
+	float al = 1.0f, bet = 1.0f;
 
-	status = cublasSetMatrix(N, N, size, h_A, N, d_A, N);
-	status = cublasSetMatrix(N, N, size, h_B, N, d_B, N);
-	status = cublasSetMatrix(N, N, size, h_C, N, d_C, N);
+	status = cublasSetMatrix(N, N, sizeof(float), h_A, N, d_A, N);
+	status = cublasSetMatrix(N, N, sizeof(float), h_B, N, d_B, N);
+	status = cublasSetMatrix(N, N, sizeof(float), h_C, N, d_C, N);
 
 
 	status  = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, N, N, &al, d_A, N, d_B, N, &bet, d_C, N);
 
 	status = cublasGetMatrix(N, N, sizeof(float), d_C, N, h_C, N);
-
+	printf("h_C: %f\n", h_C[0]); // DEBUG PRINT
 	printf("Before checkResult	\n"); // DEBUG PRINT
 	checkResult(h_A, h_B, h_C, h_C_cpu, N);
 	printf("After checkResult\n"); // DEBUG PRINT
