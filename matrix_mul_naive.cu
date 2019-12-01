@@ -15,7 +15,7 @@ void initWith(float* M, int dim, float n) {
 void init(float* M, int dim) {
 	for (int i = 0; i < dim; i++	) {
 		for (int j = 0; j < dim; j++) {
-			M[i * dim + j] = rand();
+			M[i * dim + j] = (rand() % 10);
 		}
 	}
 }
@@ -141,10 +141,7 @@ void checkResult(float* A, float* B, float* C, float* C_cpu, int dim) {
 	for (int i = 0; i < dim; i++) {
 		for (int j = 0; j < dim; j++) {
 			if (abs(C[i * dim + j] - C_cpu[i * dim + j]) > 0.001) {
-				printf("matrix pos: %d,%d\n", i, j);
-				printf("index: %d\n", i * dim + j); // DEBUG PRINT
-				printf("CPU: %f, GPU %f\n", C_cpu[i * dim + j], C[i * dim + j]);	 // DEBUG PRINT
-				printf("ERROR: Incorrect Results! %f\n", abs(C_cpu[i * dim + j] - C[i * dim + j]));
+				printf("ERROR: Incorrect Results!\n");
 				return;
 			}
 		}
@@ -186,16 +183,8 @@ int main(int argc, char** argv) {
 	cudaMallocManaged(&C_cpu, size);
 
 	// Matrix initialization
-	initWith(A, N, 1.0f);
-	initWith(B, N, 1.0f);
-
-
-	/*for (int i = 0; i < N; i++) {
-		for (int j = 0; j < N; j++) {
-			printf("%f ", C_cpu[i * N + j]);
-		}
-		printf("\n");
-	}*/
+	init(A, N);
+	init(B, N);
 
 	// Cuda layout definition
 	dim3 threadsPerBlock(BLOCK_SIZE, BLOCK_SIZE);
@@ -205,14 +194,7 @@ int main(int argc, char** argv) {
 	matrixMul<<<blocksPerGrid, threadsPerBlock>>>(A, B, C, N);
 	cudaDeviceSynchronize();
 
-	initWith(C_cpu, N, 100.0f);
-	for (int i = 0; i < N; i++) {
-		for (int j = 0; j < N; j++) {
-			printf("%f ", C_cpu[i * N + j]);
-		}
-		printf("\n");
-	}
-
+	matrixMulCPU(A, B, C_cpu, N);
 
 	checkResult(A, B, C, C_cpu, N);
 
